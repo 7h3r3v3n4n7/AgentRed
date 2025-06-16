@@ -8,6 +8,7 @@ import os
 
 # Load environment variables
 DEBUG = os.getenv('DEBUG', '0') == '1'
+COMMAND_TIMEOUT = int(os.getenv('COMMAND_TIMEOUT', '300'))  # 5 minutes default timeout
 
 def debug_print(*args, **kwargs):
     """Print debug messages only if DEBUG is enabled"""
@@ -131,6 +132,7 @@ class App:
                         print(result.output)  # Print the scan results
                         self.initial_scan = result.output
                         debug_print("Initial scan completed successfully")
+                        print("\nAnalyzing results... Please wait.")
                     else:
                         print(f"\nWarning: Initial scan failed: {result.error}")
                         debug_print(f"Initial scan failed: {result.error}")

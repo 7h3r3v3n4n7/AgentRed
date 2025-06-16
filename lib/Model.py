@@ -182,49 +182,61 @@ If a vulnerability is confirmed:
     def load_model(self):
         try:
             if self.model is not None:
+                debug_print("Model already loaded")
                 return "Model already loaded"
 
             model_path = "models/pentest-agent.gguf"
+            debug_print(f"Loading model from: {model_path}")
+            
             if not os.path.exists(model_path):
-                return f"Error: Model file not found at {model_path}"
+                error_msg = f"Error: Model file not found at {model_path}"
+                debug_print(error_msg)
+                return error_msg
 
             # Calculate optimal context size
             context_size = self._get_optimal_context_size()
             debug_print(f"Loading model with context size: {context_size} tokens")
 
-            # Suppress stdout during model loading
-            devnull = open(os.devnull, 'w')
-            old_stdout = sys.stdout
-            sys.stdout = devnull
             try:
+                debug_print("Initializing Llama model...")
                 self.model = Llama(
                     model_path=model_path,
                     n_ctx=context_size,
                     n_threads=4,
                     chat_format="chatml-function-calling",
-                    verbose=False  # Disable verbose output
+                    verbose=False
                 )
+                debug_print("Model loaded successfully")
+                return "Model loaded"
             except Exception as e:
+                debug_print(f"Error during model initialization: {str(e)}")
                 # If first attempt fails, try with smaller context
                 if context_size > 8192:
                     debug_print("Retrying with smaller context size...")
                     context_size = 8192
-                    self.model = Llama(
-                        model_path=model_path,
-                        n_ctx=context_size,
-                        n_threads=4,
-                        chat_format="chatml-function-calling",
-                        verbose=False
-                    )
+                    try:
+                        self.model = Llama(
+                            model_path=model_path,
+                            n_ctx=context_size,
+                            n_threads=4,
+                            chat_format="chatml-function-calling",
+                            verbose=False
+                        )
+                        debug_print("Model loaded successfully with reduced context")
+                        return "Model loaded with reduced context"
+                    except Exception as e2:
+                        error_msg = f"Error loading model with reduced context: {str(e2)}"
+                        debug_print(error_msg)
+                        return error_msg
                 else:
-                    raise e
-            finally:
-                sys.stdout = old_stdout
-                devnull.close()
-            debug_print("Model loaded successfully")
-            return "Model loaded"
+                    error_msg = f"Error loading model: {str(e)}"
+                    debug_print(error_msg)
+                    return error_msg
+
         except Exception as e:
-            return f"Error loading model: {str(e)}"
+            error_msg = f"Unexpected error loading model: {str(e)}"
+            debug_print(error_msg)
+            return error_msg
 
     def _build_tools_schema(self) -> List[Dict]:
         """Build the tools schema for function calling"""
