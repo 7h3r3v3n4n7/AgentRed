@@ -52,10 +52,38 @@ class Model:
         self.memory_threshold = 0.8  # 80% memory usage threshold
         
         # Load JSON grammar from file
-        grammar_path = os.path.join(os.path.dirname(__file__), "grammars", "json.gbnf")
-        with open(grammar_path, 'r') as f:
-            self.json_grammar = LlamaGrammar.from_string(f.read())
+        try:
+            grammar_path = os.path.join(os.path.dirname(__file__), "grammars", "json.gbnf")
+            debug_print(f"Loading grammar from: {grammar_path}")
+            if not os.path.exists(grammar_path):
+                debug_print("Grammar file not found, creating default JSON grammar")
+                self.json_grammar = self._create_default_json_grammar()
+            else:
+                with open(grammar_path, 'r') as f:
+                    grammar_content = f.read()
+                    debug_print(f"Grammar content: {grammar_content[:100]}...")  # Print first 100 chars
+                    self.json_grammar = LlamaGrammar.from_string(grammar_content)
+            debug_print("Grammar loaded successfully")
+        except Exception as e:
+            debug_print(f"Error loading grammar: {e}")
+            debug_print("Using default JSON grammar")
+            self.json_grammar = self._create_default_json_grammar()
         debug_print("Model initialization complete")
+
+    def _create_default_json_grammar(self) -> LlamaGrammar:
+        """Create a default JSON grammar for response validation"""
+        grammar = """
+root ::= object
+object ::= "{" ws (string ":" ws value ("," ws string ":" ws value)*)? ws "}"
+array ::= "[" ws (value ("," ws value)*)? ws "]"
+string ::= "\"" ([^"\\] | "\\" ["\\/bfnrt] | "\\u" [0-9a-fA-F]{4})* "\""
+number ::= "-"? ("0" | [1-9] [0-9]*) ("." [0-9]+)? ([eE] [-+]? [0-9]+)?
+boolean ::= "true" | "false"
+null ::= "null"
+value ::= object | array | string | number | boolean | null
+ws ::= [ \t\n\r]*
+"""
+        return LlamaGrammar.from_string(grammar)
 
     def _calculate_token_limits(self):
         """Calculate token limits based on available system memory"""
@@ -100,51 +128,70 @@ class Model:
             for tool in self.tools_list:
                 tools_info += f"{tool},"
 
-        return f"""ABSOLUTELY NO SIMULATION OR ROLEPLAY. This is a real-world penetration test on a live target. Every command you suggest will be executed. Respond using only real tools and valid JSON.
+        return f"""You are a penetration testing assistant. You MUST respond in valid JSON format ONLY.
 
-DO NOT describe what you would do. DO IT by responding with an actual command.
+TARGET: {self.target}
 
-ONLY use tools listed below:
+AVAILABLE TOOLS:
 {tools_info}
 
-Start by performing a port scan on the target:
-Target: {self.target}
-
-STRICT RULES:
-1. Respond ONLY in valid JSON. No text outside the JSON object.
-2. JSON MUST include these fields: "response", "command"
-3. JSON MAY include "vulnerability" if a vuln is confirmed.
-4. DO NOT use markdown formatting.
-5. DO NOT simulate requests or describe actions. Use real commands.
-6. DO NOT include hypothetical examples or roleplay.
-7. DO NOT reason step by step. Provide actionable output only.
-8. EVERY response MUST include a command to execute.
-9. NEVER respond without a command.
-10. NEVER describe what you would do - just do it with a command.
-
-OUTPUT FORMAT EXAMPLE:
+RESPONSE FORMAT: (You MUST use this exact format for ALL responses)
 {{
-  "response": "Starting with a comprehensive port scan to discover open services.",
-  "command": "nmap -sV -sC -p- {self.target}"
+    "response": "Your analysis or explanation here",
+    "command": "The command to execute"
 }}
 
-If a vulnerability is confirmed:
+If you find a vulnerability, add a vulnerability field:
 {{
-  "response": "SQL injection vulnerability detected in login form.",
-  "command": "sqlmap -u {self.target}/login.php --forms --batch",
-  "vulnerability": {{
-    "type": "SQL Injection",
-    "severity": "high",
-    "description": "The login form fails to sanitize user input.",
-    "exploitation": {{
-      "method": "1. Intercept login\n2. Inject payload\n3. Gain access",
-      "code": "username=admin' OR '1'='1&password=anything",
-      "requirements": ["Burp Suite", "Login endpoint access"]
-    }},
-    "references": ["CVE-2023-1234", "OWASP SQLi Guide"]
-  }}
+    "response": "Vulnerability description",
+    "command": "Command to verify or exploit",
+    "vulnerability": {{
+        "type": "Vulnerability type",
+        "severity": "low/medium/high/critical",
+        "description": "Detailed description",
+        "exploitation": {{
+            "method": "How to exploit",
+            "code": "Example code",
+            "requirements": ["Required tools"]
+        }},
+        "references": ["CVE numbers or guides"]
+    }}
 }}
-"""
+
+RULES:
+1. ALWAYS respond in valid JSON with ONLY "response" and "command" fields
+2. NEVER use "type", "value", "status", or "message" fields
+3. NEVER include text outside the JSON
+4. NEVER use markdown or code blocks
+5. NEVER describe actions - just provide the JSON
+6. ALWAYS analyze scan results before suggesting next steps
+7. ALWAYS suggest a specific command to execute
+
+EXAMPLE RESPONSES:
+
+For initial analysis with open ports:
+{{
+    "response": "Analyzed scan results. Found open ports: 21 (FTP), 22 (SSH), 25 (SMTP), 80 (HTTP), 8080 (HTTP). SSH version is OpenSSH 9.2p1 Debian, HTTP servers are nginx 1.22.1 and Apache 2.4.62. Suggesting web enumeration on port 80 as next step.",
+    "command": "nikto -h {self.target}"
+}}
+
+For web enumeration:
+{{
+    "response": "Starting web vulnerability scan with nikto to identify potential web application vulnerabilities on the HTTP service.",
+    "command": "nikto -h {self.target}"
+}}
+
+For SSH analysis:
+{{
+    "response": "SSH service detected on port 22. Checking for known vulnerabilities in OpenSSH 9.2p1 Debian.",
+    "command": "nuclei -t ssh -u ssh://{self.target}"
+}}
+
+For FTP analysis:
+{{
+    "response": "FTP service detected on port 21. Checking for anonymous access and known vulnerabilities in vsftpd 3.0.3.",
+    "command": "nmap --script ftp-anon,ftp-syst -p 21 {self.target}"
+}}"""
 
     def _check_memory_usage(self) -> bool:
         """Check if memory usage is above threshold"""
@@ -203,7 +250,6 @@ If a vulnerability is confirmed:
                     model_path=model_path,
                     n_ctx=context_size,
                     n_threads=4,
-                    chat_format="chatml-function-calling",
                     verbose=False
                 )
                 debug_print("Model loaded successfully")
@@ -219,7 +265,6 @@ If a vulnerability is confirmed:
                             model_path=model_path,
                             n_ctx=context_size,
                             n_threads=4,
-                            chat_format="chatml-function-calling",
                             verbose=False
                         )
                         debug_print("Model loaded successfully with reduced context")
@@ -238,102 +283,12 @@ If a vulnerability is confirmed:
             debug_print(error_msg)
             return error_msg
 
-    def _build_tools_schema(self) -> List[Dict]:
-        """Build the tools schema for function calling"""
-        tools = []
-        
-        # Add command execution tool
-        tools.append({
-            "type": "function",
-            "function": {
-                "name": "execute_command",
-                "description": "Execute a security testing command",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "command": {
-                            "type": "string",
-                            "description": "The command to execute"
-                        },
-                        "target": {
-                            "type": "string",
-                            "description": "The target host/IP/URL"
-                        },
-                        "args": {
-                            "type": "array",
-                            "items": {
-                                "type": "string"
-                            },
-                            "description": "Optional command arguments"
-                        },
-                        "tool_config": {
-                            "type": "object",
-                            "description": "Optional tool-specific configuration"
-                        }
-                    },
-                    "required": ["command"]
-                }
-            }
-        })
-        
-        # Add vulnerability reporting tool
-        tools.append({
-            "type": "function",
-            "function": {
-                "name": "report_vulnerability",
-                "description": "Report a discovered vulnerability",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "type": {
-                            "type": "string",
-                            "description": "Type of vulnerability"
-                        },
-                        "severity": {
-                            "type": "string",
-                            "description": "Severity level (low/medium/high/critical)"
-                        },
-                        "description": {
-                            "type": "string",
-                            "description": "Description of the vulnerability"
-                        },
-                        "exploitation": {
-                            "type": "object",
-                            "properties": {
-                                "method": {
-                                    "type": "string",
-                                    "description": "Method to exploit the vulnerability"
-                                },
-                                "code": {
-                                    "type": "string",
-                                    "description": "Example exploitation code"
-                                },
-                                "requirements": {
-                                    "type": "array",
-                                    "items": {
-                                        "type": "string"
-                                    },
-                                    "description": "Requirements for exploitation"
-                                }
-                            }
-                        },
-                        "references": {
-                            "type": "array",
-                            "items": {
-                                "type": "string"
-                            },
-                            "description": "References (CVEs, guides, etc.)"
-                        }
-                    },
-                    "required": ["type", "severity", "description"]
-                }
-            }
-        })
-        
-        return tools
-
     def _suppress_stdout(self):
         """Context manager for suppressing stdout"""
+        # Never suppress stdout if DEBUG is enabled
+        if DEBUG:
+            return None, None
+            
         devnull = open(os.devnull, 'w')
         old_stdout = sys.stdout
         sys.stdout = devnull
@@ -341,8 +296,9 @@ If a vulnerability is confirmed:
 
     def _restore_stdout(self, devnull, old_stdout):
         """Restore stdout and close devnull"""
-        sys.stdout = old_stdout
-        devnull.close()
+        if not DEBUG and devnull and old_stdout:
+            sys.stdout = old_stdout
+            devnull.close()
 
     def _execute_with_memory_management(self, func, *args, **kwargs):
         """Execute a function with memory management"""
@@ -351,13 +307,16 @@ If a vulnerability is confirmed:
             self._cleanup_memory()
         
         debug_print(f"Executing function: {func.__name__}")
+        debug_print(f"Function args: {args}")
+        debug_print(f"Function kwargs: {kwargs}")
+        
         result = func(*args, **kwargs)
+        debug_print(f"Function result: {result}")
         
         self._cleanup_memory()
         return result
 
     def get_chat_completion(self, messages: List[Dict[str, str]]) -> str:
-        """Generate a response from the model using ChatML function calling"""
         try:
             if self.model is None:
                 debug_print("Loading model...")
@@ -369,145 +328,142 @@ If a vulnerability is confirmed:
                     })
 
             debug_print("Generating response...")
-            tools = self._build_tools_schema()
-            
-            # Generate initial response
-            devnull, old_stdout = self._suppress_stdout()
-            try:
-                result = self._execute_with_memory_management(
-                    self.model.create_chat_completion,
-                    messages=messages,
-                    tools=tools,
-                    temperature=0.7,
-                    max_tokens=self.max_generation_tokens
-                )
-            finally:
-                self._restore_stdout(devnull, old_stdout)
-            
-            debug_print("Response generated")
+            debug_print(f"Messages: {messages}")
 
-            if not result or not isinstance(result, dict) or "choices" not in result or len(result["choices"]) == 0:
-                debug_print("No valid response generated")
+            # Plain chat completion with grammar
+            result = self._execute_with_memory_management(
+                self.model.create_chat_completion,
+                messages=messages,
+                temperature=0.7,
+                max_tokens=self.max_generation_tokens,
+                grammar=self.json_grammar
+            )
+            debug_print(f"Model response type: {type(result)}")
+            debug_print(f"Raw model response: {result}")
+
+            if not result or not isinstance(result, dict):
+                debug_print(f"Invalid result type: {type(result)}")
                 return json.dumps({
-                    "response": "Error: No response generated from model",
-                    "command": "echo 'No response generated'"
+                    "response": "Error: Invalid response from model",
+                    "command": "echo 'Invalid response'"
+                })
+
+            if "choices" not in result or len(result["choices"]) == 0:
+                debug_print("No choices in response")
+                return json.dumps({
+                    "response": "Error: No choices in response",
+                    "command": "echo 'No choices'"
                 })
 
             response_message = result["choices"][0]["message"]
-            
-            if "tool_calls" in response_message:
-                debug_print("Processing tool calls...")
-                tool_calls = response_message["tool_calls"]
-                responses = []
-                
-                for tool_call in tool_calls:
-                    function_name = tool_call["function"]["name"]
-                    function_args = json.loads(tool_call["function"]["arguments"])
-                    debug_print(f"Tool call: {function_name}")
-                    
-                    if function_name == "execute_command" and self.tools:
-                        command = function_args.get("command", "")
-                        target = function_args.get("target", self.target)
-                        args = function_args.get("args")
-                        tool_config = function_args.get("tool_config")
-                        
-                        debug_print(f"Executing command: {command}")
-                        result = self.tools.execute_command(command, target, args, tool_config)
-                        responses.append({
-                            "response": f"Command executed: {command}",
-                            "command": command,
-                            "output": result.output if result.success else result.error
-                        })
-                    
-                    elif function_name == "report_vulnerability":
-                        debug_print(f"Reporting vulnerability: {function_args.get('type')}")
-                        responses.append({
-                            "response": f"Vulnerability detected: {function_args.get('type')}",
-                            "command": "echo 'Vulnerability detected'",
-                            "vulnerability": function_args
-                        })
-                
-                messages.append({
-                    "role": "function",
-                    "name": function_name,
-                    "content": json.dumps(responses)
-                })
-                
-                # Get follow-up response
-                debug_print("Getting follow-up response...")
-                devnull, old_stdout = self._suppress_stdout()
-                try:
-                    follow_up = self._execute_with_memory_management(
-                        self.model.create_chat_completion,
-                        messages=messages,
-                        tools=tools,
-                        temperature=0.7,
-                        max_tokens=self.max_generation_tokens
-                    )
-                finally:
-                    self._restore_stdout(devnull, old_stdout)
-                
-                if follow_up and "choices" in follow_up and len(follow_up["choices"]) > 0:
-                    response = follow_up["choices"][0]["message"]["content"]
-                    if not self.validate_json_response(response):
-                        debug_print("Invalid response format")
-                        return json.dumps({
-                            "response": "Invalid response format",
-                            "command": "echo 'Invalid response format'"
-                        })
-                    return response
-                
-                return json.dumps(responses[0]) if responses else json.dumps({
-                    "response": "No function responses",
-                    "command": "echo 'No function responses'"
-                })
-            
-            response = response_message["content"]
+            response = response_message.get("content", "")
+            debug_print(f"Final response content: {response}")
+
             if not self.validate_json_response(response):
                 debug_print("Invalid response format")
                 return json.dumps({
-                    "response": "Invalid response format",
+                    "response": "Invalid response format from model. Please check the system prompt or model behavior.",
                     "command": "echo 'Invalid response format'"
                 })
             return response
 
         except Exception as e:
             debug_print(f"Error in get_chat_completion: {e}")
+            import traceback
+            debug_print(f"Traceback: {traceback.format_exc()}")
             return json.dumps({
                 "response": f"Error generating response: {str(e)}",
                 "command": "echo 'Error occurred'"
             })
 
+    def validate_json_response(self, response: str) -> bool:
+        """Validate if the response is a valid JSON string"""
+        try:
+            debug_print(f"Validating JSON response: {response}")
+            debug_print(f"Response type: {type(response)}")
+            debug_print(f"Response length: {len(response)}")
+            
+            # Clean the response first
+            cleaned_response = self.clean_response(response)
+            debug_print(f"Cleaned response: {cleaned_response}")
+            
+            # Try to parse JSON
+            try:
+                data = json.loads(cleaned_response)
+                debug_print(f"Parsed JSON: {data}")
+            except json.JSONDecodeError as e:
+                debug_print(f"JSON decode error: {e}")
+                debug_print(f"Error position: {e.pos}")
+                debug_print(f"Error line: {e.lineno}")
+                debug_print(f"Error column: {e.colno}")
+                debug_print(f"Error message: {e.msg}")
+                return False
+            
+            # Check required fields
+            if not isinstance(data, dict):
+                debug_print("Response is not a dictionary")
+                return False
+                
+            # Check for incorrect field names
+            if "status" in data:
+                debug_print("Found 'status' field - this is not allowed")
+                return False
+                
+            if "message" in data:
+                debug_print("Found 'message' field - this is not allowed")
+                return False
+                
+            if "response" not in data:
+                debug_print("Missing 'response' field")
+                return False
+                
+            if "command" not in data:
+                debug_print("Missing 'command' field")
+                return False
+                
+            debug_print("Response validation successful")
+            return True
+
+        except Exception as e:
+            debug_print(f"Validation error: {e}")
+            import traceback
+            debug_print(f"Traceback: {traceback.format_exc()}")
+            return False
+
     def clean_response(self, text: str) -> str:
         """Clean up model response text"""
         if not text:
+            debug_print("Empty response text")
             return ""
+            
+        debug_print(f"Cleaning response text: {text}")
             
         # Remove any markdown code blocks
         text = re.sub(r'```.*?```', '', text, flags=re.DOTALL)
         text = text.replace('```', '')
+        debug_print(f"After removing code blocks: {text}")
         
         # Remove HTML tags
         text = re.sub(r'<[^>]+>', '', text)
+        debug_print(f"After removing HTML: {text}")
         
         # Remove user/assistant markers
         text = re.sub(r'\[user\d+\]|\[assistant\]', '', text)
+        debug_print(f"After removing markers: {text}")
         
         # Fix HTML entities
         text = text.replace('&lt;', '<').replace('&gt;', '>')
+        debug_print(f"After fixing entities: {text}")
         
         # Remove any text before the first { and after the last }
         text = re.sub(r'^[^{]*', '', text)
         text = re.sub(r'[^}]*$', '', text)
+        debug_print(f"After removing non-JSON text: {text}")
         
         # Normalize whitespace
         text = re.sub(r'\n{3,}', '\n\n', text)
+        debug_print(f"After normalizing whitespace: {text}")
         
-        return text.strip()
-
-    def validate_json_response(self, response: str) -> bool:
-        try:
-            json.loads(response)
-            return True
-        except json.JSONDecodeError:
-            return False
+        cleaned = text.strip()
+        debug_print(f"Final cleaned text: {cleaned}")
+        return cleaned

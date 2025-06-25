@@ -18,6 +18,11 @@ def debug_print(*args, **kwargs):
 class App:
     def __init__(self):
         debug_print("Initializing App...")
+        # Set DEBUG environment variable if not set
+        if 'DEBUG' not in os.environ:
+            os.environ['DEBUG'] = '1'
+            debug_print("DEBUG mode enabled")
+            
         banner = """
  ░▒▓██████▓▒░ ░▒▓██████▓▒░░▒▓████████▓▒░▒▓███████▓▒░▒▓████████▓▒░▒▓███████▓▒░░▒▓████████▓▒░▒▓███████▓▒░  
 ░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░      ░▒▓█▓▒░░▒▓█▓▒░ ░▒▓█▓▒░   ░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░      ░▒▓█▓▒░░▒▓█▓▒░ 
@@ -33,7 +38,7 @@ class App:
         # Initialize components
         debug_print("Initializing Tools...")
         self.tools = Tools()
-        
+
         # Initialize Model
         debug_print("Initializing Model...")
         self.model = Model(target=None, tools=self.tools)
@@ -45,10 +50,13 @@ class App:
             debug_print(f"Error loading model: {load_response}")
             print(f"Error loading model: {load_response}")
             sys.exit(1)
-            
+
+        # Get interactive mode preference
+        self.interactive_mode = self._get_interactive_mode()
+        
         # Initialize Chat with the model and tools
         debug_print("Initializing Chat...")
-        self.chat = Chat(self.model, self.tools)
+        self.chat = Chat(self.model, self.tools, interactive_mode=self.interactive_mode)
         
         # Print welcome message
         self.chat.print_welcome()
@@ -58,7 +66,7 @@ class App:
         self.target = self.get_target()
         self.tools.original_target = self.target
         debug_print("App initialization complete")
-
+    
     def validate_target(self, target: str) -> bool:
         """Validate if the target is a valid hostname, IP address, or URL"""
         debug_print(f"Validating target: {target}")
@@ -112,6 +120,12 @@ class App:
                 target = input("\nEnter target hostname, IP address, or URL: ").strip()
                 if self.validate_target(target):
                     debug_print(f"Valid target: {target}")
+                    
+                    # Update model with target information
+                    self.model.target = target
+                    self.model.system_prompt = self.model._build_system_prompt()
+                    debug_print("Updated model with target information")
+                    
                     print("\nRunning initial port scan...")
                     # Use more conservative nmap settings
                     args = ['-sV', '-sC', '-p-', '--max-retries', '2', '--min-rate', '1000']
@@ -155,33 +169,56 @@ class App:
         
         debug_print("Starting chat session...")
         response = self.chat.start_chat(initial_prompt)
-        print(f"\nAssistant: {response}")
         
-        # Main chat loop
+        if self.interactive_mode:
+            # Interactive mode - show input prompt and wait for user input
+            while True:
+                try:
+                    user_input = input("\nYou: ").strip()
+                    
+                    if user_input.lower() in ['exit', 'quit']:
+                        debug_print("User requested exit")
+                        print("\nEnding chat session...")
+                        break
+                    elif user_input.lower() == 'clear':
+                        debug_print("User requested screen clear")
+                        print("\033[H\033[J", end="")
+                        continue
+                    elif not user_input:
+                        continue
+                    
+                    debug_print(f"Processing user input: {user_input}")
+                    response = self.chat.handle_user_input(user_input, self.target)
+                    
+                except KeyboardInterrupt:
+                    debug_print("User interrupted chat")
+                    print("\n\nGoodbye!")
+                    break
+                except Exception as e:
+                    debug_print(f"Error in chat loop: {e}")
+                    print(f"\nAn error occurred: {str(e)}")
+                    break
+        else:
+            # Automatic mode - no user input needed, just show completion message
+            print(f"\n✅ Automatic penetration testing completed for target: {self.target}")
+            print("All suggested commands have been executed and analyzed.")
+            print("Type 'python main.py' to run another scan on a different target.")
+
+    def _get_interactive_mode(self) -> bool:
+        """Get user preference for interactive mode"""
+        print("\nSelect execution mode:")
+        print("1. Automatic - Commands are executed automatically")
+        print("2. Interactive - Commands require your approval")
+        
         while True:
             try:
-                user_input = input("\nYou: ").strip()
-                
-                if user_input.lower() in ['exit', 'quit']:
-                    debug_print("User requested exit")
-                    print("\nEnding chat session...")
-                    break
-                elif user_input.lower() == 'clear':
-                    debug_print("User requested screen clear")
-                    print("\033[H\033[J", end="")
-                    continue
-                elif not user_input:
-                    continue
-                
-                debug_print(f"Processing user input: {user_input}")
-                response = self.chat.handle_user_input(user_input, self.target)
-                print(f"\nAssistant: {response}")
-                
-            except KeyboardInterrupt:
-                debug_print("User interrupted chat")
-                print("\n\nGoodbye!")
-                break
-            except Exception as e:
-                debug_print(f"Error in chat loop: {e}")
-                print(f"\nAn error occurred: {str(e)}")
-                break
+                choice = input("\nEnter your choice (1 or 2): ").strip()
+                if choice == '1':
+                    return False
+                elif choice == '2':
+                    return True
+                else:
+                    print("Please enter 1 or 2.")
+            except (KeyboardInterrupt, EOFError):
+                print("\nExiting...")
+                sys.exit(0)

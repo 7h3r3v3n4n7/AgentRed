@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 import sys
 import os
+
+# Set DEBUG environment variable if not set
+if 'DEBUG' not in os.environ:
+    os.environ['DEBUG'] = '1'
+    print("[DEBUG] Debug mode enabled")
+
 from lib.App import App
 
 def main():

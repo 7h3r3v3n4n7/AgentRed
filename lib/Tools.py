@@ -110,20 +110,163 @@ class Tools:
         """Check for common wordlist locations and return available ones or None"""
         debug_print("Checking wordlists...")
         wordlist_paths = {
+            # Common web content wordlists
             'dirb_common': '/usr/share/wordlists/dirb/common.txt',
             'dirb_big': '/usr/share/wordlists/dirb/big.txt',
+            'seclists_web_common': '/usr/share/seclists/Discovery/Web-Content/common.txt',
+            'seclists_web_big': '/usr/share/seclists/Discovery/Web-Content/big.txt',
+            'seclists_web_directory': '/usr/share/seclists/Discovery/Web-Content/directory-list-2.3-medium.txt',
+            
+            # Password wordlists
             'rockyou': '/usr/share/wordlists/rockyou.txt',
             'seclists_darkweb': '/usr/share/seclists/Passwords/darkweb2017.txt',
-            'seclists_web_common': '/usr/share/seclists/Discovery/Web-Content/common.txt',
-            'fasttrack': '/usr/share/wordlists/fasttrack.txt'
+            'seclists_common_passwords': '/usr/share/seclists/Passwords/Common-Credentials/10-million-password-list-top-1000000.txt',
+            
+            # Username wordlists
+            'seclists_usernames': '/usr/share/seclists/Usernames/top-usernames-shortlist.txt',
+            'seclists_names': '/usr/share/seclists/Usernames/Names/names.txt',
+            
+            # Other wordlists
+            'fasttrack': '/usr/share/wordlists/fasttrack.txt',
+            'wfuzz_common': '/usr/share/wfuzz/wordlist/general/common.txt',
+            'wfuzz_big': '/usr/share/wfuzz/wordlist/general/big.txt'
         }
 
         available = {
             name: path if os.path.exists(path) else None
             for name, path in wordlist_paths.items()
         }
+        
+        # Create fallback wordlists if none are available
+        self._create_fallback_wordlists(available)
+        
         debug_print(f"Available wordlists: {[k for k, v in available.items() if v]}")
         return available
+
+    def _create_fallback_wordlists(self, available: Dict[str, Optional[str]]):
+        """Create fallback wordlists if none are available"""
+        debug_print("Checking for fallback wordlists...")
+        
+        # Create wordlists directory if it doesn't exist
+        wordlist_dir = os.path.join(os.path.dirname(__file__), '..', 'wordlists')
+        os.makedirs(wordlist_dir, exist_ok=True)
+        
+        # Check if we need to create any fallback wordlists
+        web_wordlists = ['dirb_common', 'seclists_web_common', 'seclists_web_directory']
+        password_wordlists = ['rockyou', 'seclists_common_passwords']
+        username_wordlists = ['seclists_usernames', 'seclists_names']
+        
+        # Create fallback web wordlist if none available
+        if not any(available.get(name) for name in web_wordlists):
+            fallback_web = os.path.join(wordlist_dir, 'web_common.txt')
+            if not os.path.exists(fallback_web):
+                debug_print("Creating fallback web wordlist...")
+                self._create_web_wordlist(fallback_web)
+            available['fallback_web'] = fallback_web
+        
+        # Create fallback password wordlist if none available
+        if not any(available.get(name) for name in password_wordlists):
+            fallback_passwords = os.path.join(wordlist_dir, 'passwords_common.txt')
+            if not os.path.exists(fallback_passwords):
+                debug_print("Creating fallback password wordlist...")
+                self._create_password_wordlist(fallback_passwords)
+            available['fallback_passwords'] = fallback_passwords
+        
+        # Create fallback username wordlist if none available
+        if not any(available.get(name) for name in username_wordlists):
+            fallback_usernames = os.path.join(wordlist_dir, 'usernames_common.txt')
+            if not os.path.exists(fallback_usernames):
+                debug_print("Creating fallback username wordlist...")
+                self._create_username_wordlist(fallback_usernames)
+            available['fallback_usernames'] = fallback_usernames
+
+    def _create_web_wordlist(self, path: str):
+        """Create a basic web content wordlist"""
+        common_paths = [
+            'admin', 'administrator', 'login', 'wp-admin', 'phpmyadmin', 'config',
+            'backup', 'backups', 'db', 'database', 'sql', 'mysql', 'oracle',
+            'api', 'rest', 'graphql', 'swagger', 'docs', 'documentation',
+            'test', 'dev', 'development', 'staging', 'prod', 'production',
+            'assets', 'static', 'css', 'js', 'images', 'uploads', 'files',
+            'cgi-bin', 'bin', 'tmp', 'temp', 'cache', 'logs', 'log',
+            'robots.txt', 'sitemap.xml', '.htaccess', '.htpasswd',
+            'wp-config.php', 'config.php', 'settings.php', 'info.php',
+            'phpinfo.php', 'test.php', 'shell.php', 'cmd.php'
+        ]
+        
+        with open(path, 'w') as f:
+            for item in common_paths:
+                f.write(f"{item}\n")
+        debug_print(f"Created web wordlist: {path}")
+
+    def _create_password_wordlist(self, path: str):
+        """Create a basic password wordlist"""
+        common_passwords = [
+            'password', '123456', '123456789', 'qwerty', 'abc123', 'password123',
+            'admin', 'administrator', 'root', 'user', 'guest', 'test', 'demo',
+            '12345678', '111111', '123123', 'admin123', 'user123', 'pass123',
+            'password1', '1234567', '1234567890', 'qwerty123', 'abc123456',
+            'password1234', 'admin1234', 'user1234', 'pass1234', 'test123',
+            'demo123', 'guest123', 'root123', 'administrator123'
+        ]
+        
+        with open(path, 'w') as f:
+            for item in common_passwords:
+                f.write(f"{item}\n")
+        debug_print(f"Created password wordlist: {path}")
+
+    def _create_username_wordlist(self, path: str):
+        """Create a basic username wordlist"""
+        common_usernames = [
+            'admin', 'administrator', 'root', 'user', 'guest', 'test', 'demo',
+            'webmaster', 'master', 'manager', 'operator', 'service', 'system',
+            'support', 'help', 'info', 'contact', 'sales', 'marketing',
+            'john', 'jane', 'bob', 'alice', 'dave', 'sarah', 'mike', 'lisa',
+            'tom', 'jerry', 'harry', 'hermione', 'ron', 'neville', 'luna'
+        ]
+        
+        with open(path, 'w') as f:
+            for item in common_usernames:
+                f.write(f"{item}\n")
+        debug_print(f"Created username wordlist: {path}")
+
+    def get_best_wordlist(self, wordlist_type: str) -> Optional[str]:
+        """Get the best available wordlist for a specific type"""
+        debug_print(f"Getting best wordlist for type: {wordlist_type}")
+        
+        if wordlist_type == 'web':
+            # Priority order for web wordlists
+            priorities = [
+                'seclists_web_directory',
+                'seclists_web_common', 
+                'dirb_common',
+                'fallback_web'
+            ]
+        elif wordlist_type == 'password':
+            # Priority order for password wordlists
+            priorities = [
+                'rockyou',
+                'seclists_common_passwords',
+                'fallback_passwords'
+            ]
+        elif wordlist_type == 'username':
+            # Priority order for username wordlists
+            priorities = [
+                'seclists_usernames',
+                'seclists_names',
+                'fallback_usernames'
+            ]
+        else:
+            debug_print(f"Unknown wordlist type: {wordlist_type}")
+            return None
+        
+        for priority in priorities:
+            if priority in self.wordlists and self.wordlists[priority]:
+                debug_print(f"Selected wordlist: {priority} -> {self.wordlists[priority]}")
+                return self.wordlists[priority]
+        
+        debug_print(f"No wordlist available for type: {wordlist_type}")
+        return None
 
     def _check_installed_tools(self) -> Dict[str, bool]:
         debug_print("Checking installed tools...")
@@ -372,7 +515,7 @@ class Tools:
 
             elif tool_name == 'gobuster':
                 debug_print("Configuring gobuster command...")
-                wordlist = next((path for name, path in self.wordlists.items() if 'common' in name), None)
+                wordlist = self.get_best_wordlist('web')
                 cmd.extend(args or ['dir', '-u', target_info['full_url'], '-w', wordlist or '/dev/null'])
 
             elif tool_name == 'sqlmap':
@@ -392,14 +535,36 @@ class Tools:
 
             elif tool_name == 'hydra':
                 debug_print("Configuring hydra command...")
-                wordlist = self.wordlists.get('rockyou')
-                cmd.extend(args or ['-L', '/usr/share/wordlists/user.txt', '-P', wordlist or '/dev/null'])
+                password_wordlist = self.get_best_wordlist('password')
+                username_wordlist = self.get_best_wordlist('username')
+                cmd.extend(args or ['-L', username_wordlist or '/dev/null', '-P', password_wordlist or '/dev/null'])
                 cmd.append(target)
 
             elif tool_name == 'nuclei':
                 debug_print("Configuring nuclei command...")
-                cmd.extend(args)
+                if args:
+                    cmd.extend(args)
                 cmd.append(target_info['full_url'])
+
+            elif tool_name == 'ffuf':
+                debug_print("Configuring ffuf command...")
+                wordlist = self.get_best_wordlist('web')
+                cmd.extend(args or ['-u', f"{target_info['full_url']}/FUZZ", '-w', wordlist or '/dev/null'])
+
+            elif tool_name == 'wfuzz':
+                debug_print("Configuring wfuzz command...")
+                wordlist = self.get_best_wordlist('web')
+                cmd.extend(args or ['-u', f"{target_info['full_url']}/FUZZ", '-w', wordlist or '/dev/null'])
+
+            elif tool_name == 'dirb':
+                debug_print("Configuring dirb command...")
+                wordlist = self.get_best_wordlist('web')
+                cmd.extend(args or [target_info['full_url'], wordlist or '/dev/null'])
+
+            elif tool_name == 'feroxbuster':
+                debug_print("Configuring feroxbuster command...")
+                wordlist = self.get_best_wordlist('web')
+                cmd.extend(args or ['-u', target_info['full_url'], '-w', wordlist or '/dev/null'])
 
             else:
                 debug_print(f"Using default command configuration for {tool_name}")
