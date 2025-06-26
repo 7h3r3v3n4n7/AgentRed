@@ -448,157 +448,119 @@ class Tools:
         return killed, error
 
     def execute_command(self, command: str, target: Optional[str] = None, args: Optional[List[str]] = None, tool_config: Optional[Dict] = None) -> CommandResult:
-        """Execute a security testing command
-        
-        Args:
-            command: The command to execute
-            target: The target host/IP/URL
-            args: Optional command arguments
-            tool_config: Optional tool-specific configuration
-            
-        Returns:
-            CommandResult with output and status
-        """
         try:
             debug_print(f"Executing command: {command}")
             debug_print(f"Target: {target}")
             debug_print(f"Args: {args}")
             debug_print(f"Tool config: {tool_config}")
 
-            # Split command into tool and arguments
             parts = command.strip().split()
             if not parts:
-                debug_print("Empty command")
                 return CommandResult("", False, "Empty command")
 
             tool_name = parts[0]
             if tool_name not in self.installed_tools or not self.installed_tools[tool_name]:
-                debug_print(f"Tool not installed: {tool_name}")
                 return CommandResult("", False, f"Tool '{tool_name}' is not installed or not in PATH")
 
-            # Override model-passed target with original user input if available
             target = self.original_target or target
             if not target:
-                debug_print("No target specified")
                 return CommandResult("", False, "No target specified")
-            
-            target = target.strip()
-            
-            # Get target information
-            target_info = self._get_target_info(target)
-            debug_print(f"Target info: {target_info}")
 
+            target = target.strip()
+            target_info = self._get_target_info(target)
             cmd = [tool_name]
 
-            # Tool-specific logic
+            # Tool-specific configurations
             if tool_name == 'nmap':
-                debug_print("Configuring nmap command...")
-                # Use more conservative nmap settings
-                if not args:
-                    args = ['-sV', '-sC', '-p-', '--max-retries', '2', '--min-rate', '1000']
-                elif '-p' not in ' '.join(args):
-                    args.extend(['-p-', '--max-retries', '2', '--min-rate', '1000'])
-                cmd.extend(args)
+                cmd.extend(args or ['-sV', '-sC', '-p-', '--max-retries', '2', '--min-rate', '1000', '-T4'])
                 cmd.append(target_info['host'])
 
             elif tool_name == 'nikto':
-                debug_print("Configuring nikto command...")
-                # Use host and port separately for nikto
-                host = target_info['host']
-                port = target_info['port']
-                
-                # Base command with host
-                cmd.extend(['-h', host])
-                
-                # Add port if specified
-                if port:
-                    cmd.extend(['-p', port])
-                
-                # Add other parameters
-                cmd.extend(['-maxtime', '5m', '-Tuning', '123457890', '-Format', 'txt', '-n'])
-                
-                # Add protocol configuration if available
+                cmd.extend(['-h', target_info['host']])
+                if target_info['port']:
+                    cmd.extend(['-p', target_info['port']])
+                cmd.extend(['-maxtime', '5m', '-Tuning', '0123456789a', '-Format', 'txt'])
                 if tool_config and 'nikto' in tool_config:
-                    if 'protocol' in tool_config['nikto']:
-                        cmd.append('-ssl' if tool_config['nikto']['protocol'] == 'https' else '-nossl')
-                
-                # Add any additional args after base parameters
+                    proto = tool_config['nikto'].get('protocol')
+                    if proto == 'https':
+                        cmd.append('-ssl')
+                    elif proto == 'http':
+                        cmd.append('-nossl')
                 if args:
                     cmd.extend(args)
 
             elif tool_name == 'gobuster':
-                debug_print("Configuring gobuster command...")
-                wordlist = self.get_best_wordlist('web')
-                cmd.extend(args or ['dir', '-u', target_info['full_url'], '-w', wordlist or '/dev/null'])
+                wordlist = self.get_best_wordlist('web') or '/dev/null'
+                cmd.extend(['dir', '-u', target_info['full_url'], '-w', wordlist, '-x', 'php,html', '-t', '50', '-k'])
+                if args:
+                    cmd.extend(args)
 
             elif tool_name == 'sqlmap':
-                debug_print("Configuring sqlmap command...")
-                cmd.extend(args or ['-u', target_info['full_url'], '--batch', '--random-agent'])
+                cmd.extend(['-u', target_info['full_url'], '--batch', '--random-agent', '--level', '2', '--risk', '2'])
+                if args:
+                    cmd.extend(args)
 
             elif tool_name == 'wpscan':
-                debug_print("Configuring wpscan command...")
-                cmd.extend(args or ['--url', target_info['full_url'], '--enumerate', 'p,t,u'])
+                cmd.extend(['--url', target_info['full_url'], '--enumerate', 'p,t,u', '--disable-tls-checks'])
+                if args:
+                    cmd.extend(args)
 
             elif tool_name == 'masscan':
-                debug_print("Configuring masscan command...")
-                if not args:
-                    args = ['-p-', '--rate=1000']  # Always scan all ports
-                cmd.extend(args)
+                cmd.extend(args or ['-p-', '--rate=1000', '--wait', '10'])
                 cmd.append(target_info['host'])
 
             elif tool_name == 'hydra':
-                debug_print("Configuring hydra command...")
-                password_wordlist = self.get_best_wordlist('password')
-                username_wordlist = self.get_best_wordlist('username')
-                cmd.extend(args or ['-L', username_wordlist or '/dev/null', '-P', password_wordlist or '/dev/null'])
-                cmd.append(target)
-
-            elif tool_name == 'nuclei':
-                debug_print("Configuring nuclei command...")
+                userlist = self.get_best_wordlist('username') or '/dev/null'
+                passlist = self.get_best_wordlist('password') or '/dev/null'
+                cmd.extend(['-L', userlist, '-P', passlist])
+                cmd.append(target_info['host'])
+                service = 'ssh'  # fallback
                 if args:
                     cmd.extend(args)
-                cmd.append(target_info['full_url'])
+                    for arg in args:
+                        if arg in ['http', 'ftp', 'smtp', 'rdp', 'ssh']:
+                            service = arg
+                            break
+                cmd.append(service)
+
+            elif tool_name == 'nuclei':
+                cmd.extend(['-u', target_info['full_url'], '-severity', 'medium,high,critical'])
+                if args:
+                    cmd.extend(args)
 
             elif tool_name == 'ffuf':
-                debug_print("Configuring ffuf command...")
-                wordlist = self.get_best_wordlist('web')
-                cmd.extend(args or ['-u', f"{target_info['full_url']}/FUZZ", '-w', wordlist or '/dev/null'])
+                wordlist = self.get_best_wordlist('web') or '/dev/null'
+                cmd.extend(['-u', f"{target_info['full_url']}/FUZZ", '-w', wordlist, '-mc', '200,204,301,302,307,403'])
+                if args:
+                    cmd.extend(args)
 
             elif tool_name == 'wfuzz':
-                debug_print("Configuring wfuzz command...")
-                wordlist = self.get_best_wordlist('web')
-                cmd.extend(args or ['-u', f"{target_info['full_url']}/FUZZ", '-w', wordlist or '/dev/null'])
+                wordlist = self.get_best_wordlist('web') or '/dev/null'
+                cmd.extend(['-u', f"{target_info['full_url']}/FUZZ", '-w', wordlist, '--hc', '404', '--sc', '-t', '50'])
+                if args:
+                    cmd.extend(args)
 
             elif tool_name == 'dirb':
-                debug_print("Configuring dirb command...")
-                wordlist = self.get_best_wordlist('web')
-                cmd.extend(args or [target_info['full_url'], wordlist or '/dev/null'])
+                wordlist = self.get_best_wordlist('web') or '/dev/null'
+                cmd.extend([target_info['full_url'], wordlist])
+                if args:
+                    cmd.extend(args)
 
             elif tool_name == 'feroxbuster':
-                debug_print("Configuring feroxbuster command...")
-                wordlist = self.get_best_wordlist('web')
-                cmd.extend(args or ['-u', target_info['full_url'], '-w', wordlist or '/dev/null'])
+                wordlist = self.get_best_wordlist('web') or '/dev/null'
+                cmd.extend(['-u', target_info['full_url'], '-w', wordlist, '--threads', '50', '--status-codes', '200,204,301,302,307,403', '--insecure'])
+                if args:
+                    cmd.extend(args)
 
             else:
-                debug_print(f"Using default command configuration for {tool_name}")
                 cmd.append(target_info['host'])
+                if args:
+                    cmd.extend(args)
 
-            # Start the subprocess with a process group
             debug_print(f"Final command: {' '.join(cmd)}")
-            process = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                bufsize=1,
-                universal_newlines=True,
-                preexec_fn=os.setsid
-            )
-
-            # Monitor process execution
+            process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1, universal_newlines=True, preexec_fn=os.setsid)
             killed, error = self._monitor_process(process, COMMAND_TIMEOUT)
 
-            # Capture output
             output = []
             while True:
                 line = process.stdout.readline()
@@ -608,32 +570,25 @@ class Tools:
                     output.append(line.strip())
                     debug_print(f"Command output: {line.strip()}")
 
-            # Get return code
             return_code = process.poll()
-            debug_print(f"Command completed with return code: {return_code}")
-
-            # Handle command completion
             if killed:
                 output_file = self._save_command_output(tool_name, target, '\n'.join(output), False, error)
                 return CommandResult('\n'.join(output), False, error, killed=True, output_file=output_file)
             elif return_code == 0:
-                debug_print("Command executed successfully")
                 output_file = self._save_command_output(tool_name, target, '\n'.join(output), True)
                 return CommandResult('\n'.join(output), True, output_file=output_file)
             else:
                 error = process.stderr.read()
-                debug_print(f"Command failed with error: {error}")
                 output_file = self._save_command_output(tool_name, target, "", False, error.strip())
                 return CommandResult("", False, error.strip(), output_file=output_file)
 
         except CommandTimeout as e:
-            debug_print(f"Command timeout: {e}")
             output_file = self._save_command_output(tool_name, target, "", False, str(e))
             return CommandResult("", False, str(e), timeout=True, output_file=output_file)
         except Exception as e:
-            debug_print(f"Error executing command: {e}")
             output_file = self._save_command_output(tool_name, target, "", False, str(e))
             return CommandResult("", False, str(e), output_file=output_file)
+
 
     def report_vulnerability(self, type: str, severity: str, description: str, exploitation: Optional[Dict] = None, references: Optional[List[str]] = None) -> Dict:
         """Report a discovered vulnerability
