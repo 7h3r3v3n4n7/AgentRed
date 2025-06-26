@@ -1,6 +1,6 @@
 .env
 venv/*
 models/*.gguf
-scans/*.*
+scans/*
 __pycache__/
 *.py[cod]
