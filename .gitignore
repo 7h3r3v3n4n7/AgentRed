@@ -1,4 +1,5 @@
 venv/*
 models/*.gguf
+scans/*.*
 __pycache__/
 *.py[cod]
