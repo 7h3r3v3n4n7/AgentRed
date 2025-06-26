@@ -198,6 +198,12 @@ class App:
                     break
         else:
             # Automatic mode - no user input needed, just show completion message
+            prompt = initial_prompt
+            while True:
+                response = self.chat.start_chat(prompt)
+                if not response or "exit" in response.lower():
+                    break
+                prompt = "Next steps based on above results?"
             print(f"\n✅ Automatic penetration testing completed for target: {self.target}")
             print("All suggested commands have been executed and analyzed.")
             print("Type 'python main.py' to run another scan on a different target.")

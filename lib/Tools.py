@@ -39,11 +39,8 @@ class Tools:
         self.required_tools = {
             # Network Scanning & Enumeration
             'nmap': 'Network mapper',
-            'masscan': 'Mass IP port scanner',
             'netcat': 'Network utility',
             'nbtscan': 'NetBIOS scanner',
-            'rustscan': 'Fast port scanner',
-            'unicornscan': 'Asynchronous scanner',
 
             # Web Testing
             'dirb': 'Web content scanner',

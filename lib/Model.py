@@ -384,15 +384,6 @@ RULES:
                 debug_print("Response is not a dictionary")
                 return False
                 
-            # Check for incorrect field names
-            if "status" in data:
-                debug_print("Found 'status' field - this is not allowed")
-                return False
-                
-            if "message" in data:
-                debug_print("Found 'message' field - this is not allowed")
-                return False
-                
             if "response" not in data:
                 debug_print("Missing 'response' field")
                 return False

@@ -51,12 +51,9 @@ class Chat:
             if "response" in data:
                 print(f"\n📋 Analysis: {data['response']}")
             
-            # Display the command if present
+            # Display the command if present (always as suggested, not executing)
             if "command" in data and data["command"]:
-                if self.interactive_mode:
-                    print(f"\n🔧 Suggested Command: {data['command']}")
-                else:
-                    print(f"\n🔧 Executing: {data['command']}")
+                print(f"\n🔧 Suggested Command: {data['command']}")
             
             return data
         except json.JSONDecodeError:
@@ -156,9 +153,12 @@ class Chat:
             follow_up = self.model.get_chat_completion(self.chat_history)
             self.chat_history.append({"role": "assistant", "content": follow_up})
             
-            # Display follow-up response
+            # Display follow-up response (but don't execute commands automatically)
             data = self._display_response(follow_up)
             self._check_for_vulnerability(data)
+            
+            # Don't automatically execute follow-up commands to prevent loops
+            # User can manually request execution if needed
 
     def _process_response(self, response: str) -> List[str]:
         """Process model response: check for vulnerability and extract commands"""
