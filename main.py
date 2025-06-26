@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 import sys
 import os
+from dotenv import load_dotenv
+load_dotenv()
 
 # Set DEBUG environment variable if not set
 if 'DEBUG' not in os.environ:

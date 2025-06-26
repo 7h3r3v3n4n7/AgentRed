@@ -36,7 +36,12 @@ class Model:
         self.model = None
         self.target = target
         self.tools = tools
-        self.tools_list = tools.get_tools_list() if tools else {}
+        # Only include installed tools with descriptions
+        if tools:
+            installed = tools.get_installed_tools()
+            self.tools_list = {k: tools.required_tools[k] for k in installed}
+        else:
+            self.tools_list = {}
         
         # Calculate token limits based on available memory
         self._calculate_token_limits()
@@ -125,8 +130,8 @@ ws ::= [ \t\n\r]*
     def _build_system_prompt(self) -> str:
         tools_info = "Available Tools:"
         if self.tools_list:
-            for tool in self.tools_list:
-                tools_info += f"{tool},"
+            for tool, desc in self.tools_list.items():
+                tools_info += f"\n- {tool}: {desc}"
 
         return f"""You are a penetration testing assistant. You MUST respond in valid JSON format ONLY.
 
@@ -137,61 +142,36 @@ AVAILABLE TOOLS:
 
 RESPONSE FORMAT: (You MUST use this exact format for ALL responses)
 {{
-    "response": "Your analysis or explanation here",
-    "command": "The command to execute"
+    \"response\": \"Your analysis or explanation here\",
+    \"command\": \"The command to execute\"
 }}
 
 If you find a vulnerability, add a vulnerability field:
 {{
-    "response": "Vulnerability description",
-    "command": "Command to verify or exploit",
-    "vulnerability": {{
-        "type": "Vulnerability type",
-        "severity": "low/medium/high/critical",
-        "description": "Detailed description",
-        "exploitation": {{
-            "method": "How to exploit",
-            "code": "Example code",
-            "requirements": ["Required tools"]
+    \"response\": \"Vulnerability description\",
+    \"command\": \"Command to verify or exploit\",
+    \"vulnerability\": {{
+        \"type\": \"Vulnerability type\",
+        \"severity\": \"low/medium/high/critical\",
+        \"description\": \"Detailed description\",
+        \"exploitation\": {{
+            \"method\": \"How to exploit\",
+            \"code\": \"Example code\",
+            \"requirements\": [\"Required tools\"]
         }},
-        "references": ["CVE numbers or guides"]
+        \"references\": [\"CVE numbers or guides\"]
     }}
 }}
 
 RULES:
-1. ALWAYS respond in valid JSON with ONLY "response" and "command" fields
-2. NEVER use "type", "value", "status", or "message" fields
-3. NEVER include text outside the JSON
-4. NEVER use markdown or code blocks
-5. NEVER describe actions - just provide the JSON
-6. ALWAYS analyze scan results before suggesting next steps
-7. ALWAYS suggest a specific command to execute
-
-EXAMPLE RESPONSES:
-
-For initial analysis with open ports:
-{{
-    "response": "Analyzed scan results. Found open ports: 21 (FTP), 22 (SSH), 25 (SMTP), 80 (HTTP), 8080 (HTTP). SSH version is OpenSSH 9.2p1 Debian, HTTP servers are nginx 1.22.1 and Apache 2.4.62. Suggesting web enumeration on port 80 as next step.",
-    "command": "nikto -h {self.target}"
-}}
-
-For web enumeration:
-{{
-    "response": "Starting web vulnerability scan with nikto to identify potential web application vulnerabilities on the HTTP service.",
-    "command": "nikto -h {self.target}"
-}}
-
-For SSH analysis:
-{{
-    "response": "SSH service detected on port 22. Checking for known vulnerabilities in OpenSSH 9.2p1 Debian.",
-    "command": "nuclei -t ssh -u ssh://{self.target}"
-}}
-
-For FTP analysis:
-{{
-    "response": "FTP service detected on port 21. Checking for anonymous access and known vulnerabilities in vsftpd 3.0.3.",
-    "command": "nmap --script ftp-anon,ftp-syst -p 21 {self.target}"
-}}"""
+1. ALWAYS respond in valid JSON with ONLY \"response\" and \"command\" fields
+2. NEVER include text outside the JSON
+3. NEVER use markdown or code blocks
+4. NEVER describe actions - just provide the JSON
+5. ALWAYS analyze scan results before suggesting next steps
+6. ALWAYS suggest a specific command to execute
+7. ALWAYS rely on the provided nmap scan, and DO NOT rerun nmap scans unless absolutely necessary. 
+"""
 
     def _check_memory_usage(self) -> bool:
         """Check if memory usage is above threshold"""

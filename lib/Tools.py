@@ -5,6 +5,7 @@ import shutil
 import signal
 import psutil
 import time
+import datetime
 from typing import List, Dict, Optional, Tuple
 from dataclasses import dataclass
 
@@ -25,6 +26,7 @@ class CommandResult:
     error: Optional[str] = None
     killed: bool = False
     timeout: bool = False
+    output_file: Optional[str] = None  # Path to saved output file
 
 class CommandTimeout(Exception):
     pass
@@ -33,6 +35,7 @@ class Tools:
     def __init__(self):
         debug_print("Initializing Tools...")
         self.original_target = None  # Set in App.py after getting user input
+        self.scans_dir = "scans"  # Directory to store scan results
         self.required_tools = {
             # Network Scanning & Enumeration
             'nmap': 'Network mapper',
@@ -43,7 +46,6 @@ class Tools:
             'unicornscan': 'Asynchronous scanner',
 
             # Web Testing
-            'nikto': 'Web server scanner',
             'dirb': 'Web content scanner',
             'gobuster': 'Directory/file enumeration',
             'sqlmap': 'SQL injection testing',
@@ -501,14 +503,25 @@ class Tools:
 
             elif tool_name == 'nikto':
                 debug_print("Configuring nikto command...")
-                # Always include base parameters
-                cmd.extend(['-h', target_info['full_url'], '-maxtime', '5m', '-Tuning', '123457890', '-Format', 'txt', '-n'])
-                # Add protocol and port configuration if available
+                # Use host and port separately for nikto
+                host = target_info['host']
+                port = target_info['port']
+                
+                # Base command with host
+                cmd.extend(['-h', host])
+                
+                # Add port if specified
+                if port:
+                    cmd.extend(['-p', port])
+                
+                # Add other parameters
+                cmd.extend(['-maxtime', '5m', '-Tuning', '123457890', '-Format', 'txt', '-n'])
+                
+                # Add protocol configuration if available
                 if tool_config and 'nikto' in tool_config:
                     if 'protocol' in tool_config['nikto']:
                         cmd.append('-ssl' if tool_config['nikto']['protocol'] == 'https' else '-nossl')
-                    if 'port' in tool_config['nikto']:
-                        cmd.extend(['-p', tool_config['nikto']['port']])
+                
                 # Add any additional args after base parameters
                 if args:
                     cmd.extend(args)
@@ -601,21 +614,26 @@ class Tools:
 
             # Handle command completion
             if killed:
-                return CommandResult('\n'.join(output), False, error, killed=True)
+                output_file = self._save_command_output(tool_name, target, '\n'.join(output), False, error)
+                return CommandResult('\n'.join(output), False, error, killed=True, output_file=output_file)
             elif return_code == 0:
                 debug_print("Command executed successfully")
-                return CommandResult('\n'.join(output), True)
+                output_file = self._save_command_output(tool_name, target, '\n'.join(output), True)
+                return CommandResult('\n'.join(output), True, output_file=output_file)
             else:
                 error = process.stderr.read()
                 debug_print(f"Command failed with error: {error}")
-                return CommandResult("", False, error.strip())
+                output_file = self._save_command_output(tool_name, target, "", False, error.strip())
+                return CommandResult("", False, error.strip(), output_file=output_file)
 
         except CommandTimeout as e:
             debug_print(f"Command timeout: {e}")
-            return CommandResult("", False, str(e), timeout=True)
+            output_file = self._save_command_output(tool_name, target, "", False, str(e))
+            return CommandResult("", False, str(e), timeout=True, output_file=output_file)
         except Exception as e:
             debug_print(f"Error executing command: {e}")
-            return CommandResult("", False, str(e))
+            output_file = self._save_command_output(tool_name, target, "", False, str(e))
+            return CommandResult("", False, str(e), output_file=output_file)
 
     def report_vulnerability(self, type: str, severity: str, description: str, exploitation: Optional[Dict] = None, references: Optional[List[str]] = None) -> Dict:
         """Report a discovered vulnerability
@@ -660,3 +678,44 @@ class Tools:
     def get_wordlists(self) -> Dict[str, Optional[str]]:
         """Get available wordlists"""
         return self.wordlists
+
+    def _save_command_output(self, tool_name: str, target: str, output: str, success: bool, error: str = None) -> Optional[str]:
+        """Save command output to a file in the scans directory"""
+        try:
+            # Create scans directory if it doesn't exist
+            os.makedirs(self.scans_dir, exist_ok=True)
+            
+            # Create target directory with timestamp
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            target_clean = re.sub(r'[^\w\-_.]', '_', target)  # Clean target name for directory
+            target_dir = os.path.join(self.scans_dir, f"{target_clean}_{timestamp}")
+            os.makedirs(target_dir, exist_ok=True)
+            
+            # Create filename with tool name
+            filename = f"{tool_name}.txt"
+            filepath = os.path.join(target_dir, filename)
+            
+            # Prepare content to save
+            content = f"Command: {tool_name}\n"
+            content += f"Target: {target}\n"
+            content += f"Timestamp: {datetime.datetime.now().isoformat()}\n"
+            content += f"Success: {success}\n"
+            if error:
+                content += f"Error: {error}\n"
+            content += f"{'='*50}\n\n"
+            
+            if success:
+                content += output
+            else:
+                content += f"Command failed: {error}"
+            
+            # Write to file
+            with open(filepath, 'w', encoding='utf-8') as f:
+                f.write(content)
+            
+            debug_print(f"Saved command output to: {filepath}")
+            return filepath
+            
+        except Exception as e:
+            debug_print(f"Error saving command output: {e}")
+            return None

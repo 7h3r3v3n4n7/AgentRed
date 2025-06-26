@@ -3,3 +3,5 @@ llama-cpp-python>=0.2.0
 
 # System monitoring and utilities
 psutil>=5.9.0
+
+python-dotenv

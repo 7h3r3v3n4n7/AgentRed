@@ -127,25 +127,31 @@ class Chat:
         for command in commands:
             print(f"\n🚀 Executing: {command}")
             
-            # Execute the command
+            # Execute the command and wait for output
             result = self.tools.execute_command(command, target)
             
             if result.success:
                 print(f"\n✅ Command completed successfully")
                 print(f"📄 Output:\n{result.output}")
+                if result.output_file:
+                    print(f"💾 Output saved to: {result.output_file}")
+                output_for_llm = result.output
             else:
                 print(f"\n❌ Command failed")
                 print(f"📄 Error:\n{result.error}")
+                if result.output_file:
+                    print(f"💾 Error details saved to: {result.output_file}")
+                output_for_llm = f"ERROR: {result.error}" if result.error else "ERROR: Command failed."
             
-            self.command_history.append((command, result.output if result.success else result.error))
+            self.command_history.append((command, output_for_llm))
             
-            # Add the output to chat history for further analysis
+            # Always add the output (or error) to chat history as a user message BEFORE LLM follow-up
             self.chat_history.append({
                 "role": "user",
-                "content": f"Command output:\n{result.output if result.success else result.error}"
+                "content": f"Command output:\n{output_for_llm}"
             })
             
-            # Get model's follow-up analysis
+            # Now get model's follow-up analysis, which will see the output
             print(f"\n🤖 Analyzing results...")
             follow_up = self.model.get_chat_completion(self.chat_history)
             self.chat_history.append({"role": "assistant", "content": follow_up})
@@ -193,16 +199,16 @@ class Chat:
 
     def print_welcome(self):
         """Print welcome message and instructions"""
-        print("\nWelcome to the Security Testing Assistant!")
-        print("Type 'exit' or 'quit' to end the session")
-        print("Type 'clear' to clear the screen")
+        print("\nWelcome to AgentRed")
+        print("\nThe assistant will help you test the security of your target.")
         print(f"\nMode: {'Interactive' if self.interactive_mode else 'Automatic'}")
         if self.interactive_mode:
             print("Commands will require your approval before execution.")
+            print("You can ask questions and the assistant will suggest appropriate tools to use.")
         else:
             print("Commands will be automatically executed.")
-        print("\nThe assistant will help you test the security of your target.")
-        print("You can ask questions and the assistant will suggest appropriate tools to use.")
+        
+        
 
 if __name__ == "__main__":
-    print("This module should be imported and used from main.py")
+    print("This module should be imported and used from main.py") 
