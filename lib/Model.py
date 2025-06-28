@@ -133,44 +133,61 @@ ws ::= [ \t\n\r]*
             for tool, desc in self.tools_list.items():
                 tools_info += f"\n- {tool}: {desc}"
 
+        # Add RAG context if available
+        rag_context = ""
+        if hasattr(self.tools, 'is_rag_available') and self.tools.is_rag_available():
+            try:
+                summary = self.tools.get_scan_summary()
+                if "total_documents" in summary and summary["total_documents"] > 0:
+                    rag_context = f"\n\nPREVIOUS SCAN CONTEXT:"
+                    rag_context += f"\n- Total scan results available: {summary['total_documents']}"
+                    rag_context += f"\n- Targets scanned: {', '.join(summary.get('targets', [])[:5])}"
+                    rag_context += f"\n- Tools used: {', '.join(summary.get('tools', [])[:5])}"
+                    rag_context += f"\n- You can reference previous scan results when making decisions."
+                    rag_context += f"\n- Consider patterns and findings from previous scans when suggesting next steps."
+            except Exception as e:
+                debug_print(f"Error building RAG context: {e}")
+
         return f"""You are a penetration testing assistant. You MUST respond in valid JSON format ONLY.
 
 TARGET: {self.target}
 
 AVAILABLE TOOLS:
-{tools_info}
+{tools_info}{rag_context}
 
 RESPONSE FORMAT: (You MUST use this exact format for ALL responses)
 {{
-    \"response\": \"Your analysis or explanation here\",
-    \"command\": \"The command to execute\"
+    "response": "Your analysis or explanation here",
+    "command": "The command to execute"
 }}
 
 If you find a vulnerability, add a vulnerability field:
 {{
-    \"response\": \"Vulnerability description\",
-    \"command\": \"Command to verify or exploit\",
-    \"vulnerability\": {{
-        \"type\": \"Vulnerability type\",
-        \"severity\": \"low/medium/high/critical\",
-        \"description\": \"Detailed description\",
-        \"exploitation\": {{
-            \"method\": \"How to exploit\",
-            \"code\": \"Example code\",
-            \"requirements\": [\"Required tools\"]
+    "response": "Vulnerability description",
+    "command": "Command to verify or exploit",
+    "vulnerability": {{
+        "type": "Vulnerability type",
+        "severity": "low/medium/high/critical",
+        "description": "Detailed description",
+        "exploitation": {{
+            "method": "How to exploit",
+            "code": "Example code",
+            "requirements": ["Required tools"]
         }},
-        \"references\": [\"CVE numbers or guides\"]
+        "references": ["CVE numbers or guides"]
     }}
 }}
 
 RULES:
-1. ALWAYS respond in valid JSON with ONLY \"response\" and \"command\" fields
-2. NEVER include text outside the JSON
-3. NEVER use markdown or code blocks
-4. NEVER describe actions - just provide the JSON
-5. ALWAYS analyze scan results before suggesting next steps
-6. ALWAYS suggest a specific command to execute
-7. ALWAYS rely on the provided nmap scan, and DO NOT rerun nmap scans unless absolutely necessary. 
+1. ALWAYS respond in valid JSON with ONLY "response" and "command" fields
+2. ALWAYS give a valid command with proper arguements.
+3. ALWAYS rely on the provided nmap scan.
+4. DO NOT rerun nmap scans unless absolutely necessary.
+5. NEVER describe actions - just provide the JSON
+6. ALWAYS analyze scan results before suggesting next steps
+7. ALWAYS suggest a specific command to execute
+8. When relevant, reference patterns from previous scan results
+9. Consider historical findings when planning next steps
 """
 
     def _check_memory_usage(self) -> bool:

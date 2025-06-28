@@ -6,8 +6,15 @@ import signal
 import psutil
 import time
 import datetime
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional, Tuple, Any
 from dataclasses import dataclass
+
+# Import RAG functionality
+try:
+    from .RAG import ScanRAG, SearchResult
+    RAG_AVAILABLE = True
+except ImportError:
+    RAG_AVAILABLE = False
 
 # Load environment variables
 DEBUG = os.getenv('DEBUG', '0') == '1'
@@ -36,6 +43,17 @@ class Tools:
         debug_print("Initializing Tools...")
         self.original_target = None  # Set in App.py after getting user input
         self.scans_dir = "scans"  # Directory to store scan results
+        self.current_scan_dir = None  # Current scan directory for this session
+        
+        # Initialize RAG system
+        self.rag = None
+        if RAG_AVAILABLE:
+            try:
+                self.rag = ScanRAG(self.scans_dir)
+                debug_print("RAG system initialized")
+            except Exception as e:
+                debug_print(f"Failed to initialize RAG system: {e}")
+        
         self.required_tools = {
             # Network Scanning & Enumeration
             'nmap': 'Network mapper',
@@ -43,13 +61,10 @@ class Tools:
             'nbtscan': 'NetBIOS scanner',
 
             # Web Testing
-            'dirb': 'Web content scanner',
-            'gobuster': 'Directory/file enumeration',
+            'feroxbuster': 'Fast content discovery',
             'sqlmap': 'SQL injection testing',
             'wpscan': 'WordPress security scanner',
             'whatweb': 'Web technology identifier',
-            'wfuzz': 'Web application fuzzer',
-            'feroxbuster': 'Fast content discovery',
             'httpx': 'HTTP toolkit',
             'ffuf': 'Web fuzzer',
 
@@ -57,14 +72,11 @@ class Tools:
             'dig': 'DNS lookup utility',
             'whois': 'WHOIS client',
             'dnsrecon': 'DNS enumeration tool',
-            'dnsenum': 'DNS enumeration tool',
-            'fierce': 'DNS reconnaissance tool',
             'sublist3r': 'Subdomain enumeration',
 
             # Vulnerability Assessment
             'nuclei': 'Vulnerability scanner',
             'vulners': 'Vulnerability scanner',
-            'trivy': 'Vulnerability scanner',
 
             # Password Testing
             'hydra': 'Password cracking tool',
@@ -72,11 +84,6 @@ class Tools:
             'hashcat': 'Password recovery tool',
             'cewl': 'Custom word list generator',
             'crunch': 'Wordlist generator',
-
-            # Exploitation
-            'metasploit-framework': 'Exploitation framework',
-            'exploitdb': 'Exploit database',
-            'searchsploit': 'Exploit database search tool',
 
             # Network Analysis
             'tcpdump': 'Packet analyzer',
@@ -86,7 +93,6 @@ class Tools:
             # SSL/TLS Testing
             'sslyze': 'SSL/TLS analyzer',
             'testssl.sh': 'SSL/TLS testing tool',
-            'sslscan': 'SSL/TLS scanner',
 
             # OSINT
             'theharvester': 'Email/domain reconnaissance',
@@ -96,7 +102,6 @@ class Tools:
 
             # Network Utilities
             'curl': 'Data transfer tool',
-            'wget': 'Web downloader',
             'netstat': 'Network statistics',
             'iftop': 'Network bandwidth monitor'
         }
@@ -502,10 +507,6 @@ class Tools:
                 if args:
                     cmd.extend(args)
 
-            elif tool_name == 'masscan':
-                cmd.extend(args or ['-p-', '--rate=1000', '--wait', '10'])
-                cmd.append(target_info['host'])
-
             elif tool_name == 'hydra':
                 userlist = self.get_best_wordlist('username') or '/dev/null'
                 passlist = self.get_best_wordlist('password') or '/dev/null'
@@ -631,8 +632,8 @@ class Tools:
         """Get available wordlists"""
         return self.wordlists
 
-    def _save_command_output(self, tool_name: str, target: str, output: str, success: bool, error: str = None) -> Optional[str]:
-        """Save command output to a file in the scans directory"""
+    def initialize_scan_directory(self, target: str) -> str:
+        """Initialize scan directory for a new target session"""
         try:
             # Create scans directory if it doesn't exist
             os.makedirs(self.scans_dir, exist_ok=True)
@@ -640,12 +641,30 @@ class Tools:
             # Create target directory with timestamp
             timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
             target_clean = re.sub(r'[^\w\-_.]', '_', target)  # Clean target name for directory
-            target_dir = os.path.join(self.scans_dir, f"{target_clean}_{timestamp}")
-            os.makedirs(target_dir, exist_ok=True)
+            self.current_scan_dir = os.path.join(self.scans_dir, f"{target_clean}_{timestamp}")
+            os.makedirs(self.current_scan_dir, exist_ok=True)
+            
+            debug_print(f"Initialized scan directory: {self.current_scan_dir}")
+            return self.current_scan_dir
+            
+        except Exception as e:
+            debug_print(f"Error initializing scan directory: {e}")
+            return None
+
+    def _save_command_output(self, tool_name: str, target: str, output: str, success: bool, error: str = None) -> Optional[str]:
+        """Save command output to a file in the scans directory"""
+        try:
+            # Use existing scan directory if available, otherwise create one
+            if self.current_scan_dir is None:
+                self.initialize_scan_directory(target)
+            
+            if self.current_scan_dir is None:
+                debug_print("Failed to create scan directory")
+                return None
             
             # Create filename with tool name
             filename = f"{tool_name}.txt"
-            filepath = os.path.join(target_dir, filename)
+            filepath = os.path.join(self.current_scan_dir, filename)
             
             # Prepare content to save
             content = f"Command: {tool_name}\n"
@@ -666,8 +685,123 @@ class Tools:
                 f.write(content)
             
             debug_print(f"Saved command output to: {filepath}")
+            
+            # Update RAG index if available
+            if self.rag:
+                try:
+                    self.rag.refresh_index()
+                    debug_print("RAG index updated")
+                except Exception as e:
+                    debug_print(f"Error updating RAG index: {e}")
+            
             return filepath
             
         except Exception as e:
             debug_print(f"Error saving command output: {e}")
             return None
+
+    # RAG-related methods
+    def search_scan_results(self, query: str, top_k: int = 5, target_filter: Optional[str] = None) -> List[SearchResult]:
+        """Search through scan results using RAG"""
+        if not self.rag:
+            debug_print("RAG system not available")
+            return []
+        
+        try:
+            results = self.rag.search(query, top_k, target_filter)
+            debug_print(f"Found {len(results)} results for query: {query}")
+            return results
+        except Exception as e:
+            debug_print(f"Error searching scan results: {e}")
+            return []
+    
+    def get_scan_summary(self) -> Dict[str, Any]:
+        """Get a summary of all scan results"""
+        if not self.rag:
+            return {"message": "RAG system not available"}
+        
+        try:
+            return self.rag.get_summary()
+        except Exception as e:
+            debug_print(f"Error getting scan summary: {e}")
+            return {"error": str(e)}
+    
+    def get_available_targets(self) -> List[str]:
+        """Get list of all targets with scan results"""
+        if not self.rag:
+            return []
+        
+        try:
+            return self.rag.get_targets()
+        except Exception as e:
+            debug_print(f"Error getting targets: {e}")
+            return []
+    
+    def get_available_tools(self) -> List[str]:
+        """Get list of all tools used in scan results"""
+        if not self.rag:
+            return []
+        
+        try:
+            return self.rag.get_tools()
+        except Exception as e:
+            debug_print(f"Error getting tools: {e}")
+            return []
+    
+    def get_target_scan_results(self, target: str) -> List[Dict[str, Any]]:
+        """Get all scan results for a specific target"""
+        if not self.rag:
+            return []
+        
+        try:
+            documents = self.rag.get_documents_by_target(target)
+            results = []
+            for doc in documents:
+                results.append({
+                    "tool": doc.tool,
+                    "timestamp": doc.timestamp,
+                    "success": doc.metadata.get("success", True),
+                    "file_path": doc.file_path,
+                    "content_preview": doc.content[:500] + "..." if len(doc.content) > 500 else doc.content
+                })
+            return results
+        except Exception as e:
+            debug_print(f"Error getting target scan results: {e}")
+            return []
+    
+    def get_tool_scan_results(self, tool: str) -> List[Dict[str, Any]]:
+        """Get all scan results for a specific tool"""
+        if not self.rag:
+            return []
+        
+        try:
+            documents = self.rag.get_documents_by_tool(tool)
+            results = []
+            for doc in documents:
+                results.append({
+                    "target": doc.target,
+                    "timestamp": doc.timestamp,
+                    "success": doc.metadata.get("success", True),
+                    "file_path": doc.file_path,
+                    "content_preview": doc.content[:500] + "..." if len(doc.content) > 500 else doc.content
+                })
+            return results
+        except Exception as e:
+            debug_print(f"Error getting tool scan results: {e}")
+            return []
+    
+    def refresh_rag_index(self):
+        """Manually refresh the RAG index"""
+        if not self.rag:
+            debug_print("RAG system not available")
+            return
+        
+        try:
+            self.rag.refresh_index()
+            debug_print("RAG index refreshed successfully")
+        except Exception as e:
+            debug_print(f"Error refreshing RAG index: {e}")
+    
+    def is_rag_available(self) -> bool:
+        """Check if RAG system is available"""
+        return self.rag is not None

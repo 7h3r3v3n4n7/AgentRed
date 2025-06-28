@@ -125,6 +125,9 @@ class App:
                     debug_print("Updated model with target information")
                     
                     print("\nRunning initial port scan...")
+                    # Initialize scan directory for this target session
+                    self.tools.initialize_scan_directory(target)
+                    
                     # Use more conservative nmap settings
                     args = ['-sV', '-sC', '-p-', '--max-retries', '2', '--min-rate', '1000']
                     
