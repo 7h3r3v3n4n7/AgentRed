@@ -1,0 +1,12 @@
+# Core AI dependencies
+llama-cpp-python>=0.2.0
+
+# System monitoring and utilities
+psutil>=5.9.0
+
+python-dotenv
+
+# RAG (Retrieval-Augmented Generation) dependencies
+sentence-transformers>=2.2.0
+faiss-cpu>=1.7.0
+numpy>=1.21.0
