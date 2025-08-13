@@ -85,7 +85,7 @@ class App:
         
         # Get and validate target
         debug_print("Getting target...")
-        self.target = self.get_target()
+        self.target = asyncio.run(self.get_target())
         self.tools.original_target = self.target
         debug_print("App initialization complete")
     
