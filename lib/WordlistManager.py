@@ -141,7 +141,7 @@ class WordlistManager:
     
     async def async_download_wordlist(self, url: str, filename: str) -> bool:
         """Asynchronously download a wordlist from URL with resume support"""
-        self._maybe_warn_and_prompt_cleanup()
+        await asyncio.to_thread(self._maybe_warn_and_prompt_cleanup)
         filepath = os.path.join(self.wordlists_dir, filename)
         partfile = filepath + ".part"
         resume_byte_pos = 0

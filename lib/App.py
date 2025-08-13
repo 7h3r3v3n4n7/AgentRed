@@ -135,8 +135,8 @@ class App:
         debug_print(f"Extracted host: {target}")
         return target
     
-    async def get_target(self) -> str:
-        """Prompt user for target hostname/IP/URL and validate input (async for tool execution)"""
+    def get_target(self) -> str:
+        """Prompt user for target hostname/IP/URL and validate input"""
         while True:
             try:
                 target = input("\nEnter target hostname, IP address, or URL: ").strip()
@@ -152,7 +152,7 @@ class App:
                     # Use more conservative nmap settings
                     args = ['-sV', '-sC', '-p-', '--max-retries', '2', '--min-rate', '1000']
                     debug_print("Executing initial nmap scan...")
-                    result = await self.tools.async_execute_command("nmap", target, args)
+                    result = self.tools.execute_command("nmap", target, args)
                     if result.killed:
                         print(f"\nWarning: Initial scan was killed due to resource constraints.")
                         print("Continuing with limited information...")
