@@ -20,7 +20,7 @@ def debug_print(*args, **kwargs):
 class CommandResult:
     output: str
     success: bool
-    error: Optional[str] = None
+    error: str = ""
     killed: bool = False
     timeout: bool = False
     output_file: Optional[str] = None  # Path to saved output file
@@ -62,8 +62,8 @@ class CommandExecutor:
         except Exception as e:
             debug_print(f"Error handling command timeout: {e}")
 
-    def _monitor_process(self, process: subprocess.Popen, timeout: int) -> Tuple[bool, Optional[str]]:
-        """Monitor a process and return success status and output"""
+    def _monitor_process(self, process: subprocess.Popen, timeout: int) -> Tuple[bool, str, str]:
+        """Monitor a process and return success status, output, and error"""
         start_time = time.time()
         output_lines = []
         error_lines = []
@@ -73,13 +73,13 @@ class CommandExecutor:
                 # Check timeout
                 if time.time() - start_time > timeout:
                     self._handle_command_timeout(process, timeout)
-                    return False, "Command timed out"
+                    return False, "", "Command timed out"
                 
                 # Check memory usage
                 if self._check_memory_usage():
                     debug_print("Memory usage high, killing process...")
                     process.terminate()
-                    return False, "Process killed due to high memory usage"
+                    return False, "", "Process killed due to high memory usage"
                 
                 # Read output
                 try:
@@ -105,13 +105,13 @@ class CommandExecutor:
             
             success = process.returncode == 0
             output = '\n'.join(output_lines)
-            error = '\n'.join(error_lines) if error_lines else None
-            
+            error = '\n'.join(error_lines) if error_lines else ""
+
             return success, output, error
-            
+
         except Exception as e:
             debug_print(f"Error monitoring process: {e}")
-            return False, f"Error monitoring process: {str(e)}"
+            return False, "", f"Error monitoring process: {str(e)}"
 
     def execute_command(self, command: str, target: Optional[str] = None, args: Optional[list] = None, tool_config: Optional[dict] = None) -> CommandResult:
         """Execute a command and return the result"""
@@ -145,13 +145,7 @@ class CommandExecutor:
             )
             
             # Monitor the process
-            result = self._monitor_process(process, COMMAND_TIMEOUT)
-            
-            if len(result) == 2:
-                success, output = result
-                error = None
-            else:
-                success, output, error = result
+            success, output, error = self._monitor_process(process, COMMAND_TIMEOUT)
             
             # Create CommandResult
             command_result = CommandResult(
@@ -176,10 +170,10 @@ class CommandExecutor:
 
     def execute_with_timeout(self, command: str, timeout: int = COMMAND_TIMEOUT) -> CommandResult:
         """Execute a command with a specific timeout"""
+        global COMMAND_TIMEOUT
         original_timeout = COMMAND_TIMEOUT
         try:
             # Temporarily change timeout
-            global COMMAND_TIMEOUT
             COMMAND_TIMEOUT = timeout
             return self.execute_command(command)
         finally:
@@ -268,7 +262,7 @@ class CommandExecutor:
                 debug_print(f"[ASYNC] Error reading remaining output: {e}")
             success = process.returncode == 0 and not killed and not timed_out
             output = '\n'.join(output_lines)
-            error = '\n'.join(error_lines) if error_lines else None
+            error = '\n'.join(error_lines) if error_lines else ""
             return CommandResult(
                 output=output,
                 success=success,
