@@ -89,10 +89,19 @@ class Tools:
     async def async_execute_command(self, command: str, target: Optional[str] = None, args: Optional[List[str]] = None, tool_config: Optional[Dict] = None, timeout: int = None) -> CommandResult:
         """Asynchronously execute a command and return the result, with global concurrency limit"""
         async with self._semaphore:
-            result = await self.command_executor.async_execute_command(command, target, args, tool_config, timeout)
-            # Save command output if we have a target
+            result = await self.command_executor.async_execute_command(
+                command, target, args, tool_config, timeout
+            )
+            # Save command output if we have a target without blocking the event loop
             if target and result.output:
-                self._save_command_output(command, target, result.output, result.success, result.error)
+                await asyncio.to_thread(
+                    self._save_command_output,
+                    command,
+                    target,
+                    result.output,
+                    result.success,
+                    result.error,
+                )
             return result
     
     def initialize_scan_directory(self, target: str) -> str:

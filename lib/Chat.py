@@ -656,8 +656,10 @@ class Chat:
         commands = self._extract_commands(response)
         if commands:
             if self.interactive_mode:
-                # In interactive mode, ask user for approval
-                chosen_command = self._get_user_command_choice(commands)
+                # In interactive mode, ask user for approval without blocking the event loop
+                chosen_command = await asyncio.to_thread(
+                    self._get_user_command_choice, commands
+                )
                 if chosen_command:
                     await self._execute_commands([chosen_command], target)
             else:
