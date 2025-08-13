@@ -247,7 +247,7 @@ class CommandExecutor:
                     killed = True
                     break
                 await asyncio.sleep(0.1)
-                await process.poll()
+            await process.wait()
             # Wait for output reading to finish
             await stdout_task
             await stderr_task
