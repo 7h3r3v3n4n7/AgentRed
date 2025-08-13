@@ -176,10 +176,10 @@ class CommandExecutor:
 
     def execute_with_timeout(self, command: str, timeout: int = COMMAND_TIMEOUT) -> CommandResult:
         """Execute a command with a specific timeout"""
+        global COMMAND_TIMEOUT
         original_timeout = COMMAND_TIMEOUT
         try:
             # Temporarily change timeout
-            global COMMAND_TIMEOUT
             COMMAND_TIMEOUT = timeout
             return self.execute_command(command)
         finally:
@@ -253,7 +253,7 @@ class CommandExecutor:
                     killed = True
                     break
                 await asyncio.sleep(0.1)
-                await process.poll()
+            await process.wait()
             # Wait for output reading to finish
             await stdout_task
             await stderr_task
