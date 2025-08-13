@@ -12,14 +12,7 @@ import pickle
 import hashlib
 from collections import defaultdict
 from lib.config import Config
-
-# Load environment variables
-DEBUG = os.getenv('DEBUG', '0') == '1'
-
-def debug_print(*args, **kwargs):
-    """Print debug messages only if DEBUG is enabled"""
-    if DEBUG:
-        print("[DEBUG]", *args, **kwargs)
+from lib.logging_utils import debug_print
 
 class AgentType(Enum):
     """Types of agents available"""

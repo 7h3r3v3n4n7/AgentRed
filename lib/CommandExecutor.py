@@ -5,16 +5,11 @@ import psutil
 import time
 from typing import Optional, Tuple
 from dataclasses import dataclass
+from lib.logging_utils import debug_print
 
 # Load environment variables
-DEBUG = os.getenv('DEBUG', '0') == '1'
 COMMAND_TIMEOUT = int(os.getenv('COMMAND_TIMEOUT', '300'))  # 5 minutes default timeout
 MEMORY_THRESHOLD = float(os.getenv('MEMORY_THRESHOLD', '0.8'))  # 80% memory threshold
-
-def debug_print(*args, **kwargs):
-    """Print debug messages only if DEBUG is enabled"""
-    if DEBUG:
-        print("[DEBUG]", *args, **kwargs)
 
 @dataclass
 class CommandResult:
@@ -176,10 +171,10 @@ class CommandExecutor:
 
     def execute_with_timeout(self, command: str, timeout: int = COMMAND_TIMEOUT) -> CommandResult:
         """Execute a command with a specific timeout"""
+        global COMMAND_TIMEOUT
         original_timeout = COMMAND_TIMEOUT
         try:
             # Temporarily change timeout
-            global COMMAND_TIMEOUT
             COMMAND_TIMEOUT = timeout
             return self.execute_command(command)
         finally:

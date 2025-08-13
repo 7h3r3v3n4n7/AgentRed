@@ -7,14 +7,10 @@ import heapq
 import aiohttp
 import asyncio
 from lib.config import Config
+from lib.logging_utils import debug_print
 
 # Load environment variables
 DEBUG = os.getenv('DEBUG', '0') == '1'
-
-def debug_print(*args, **kwargs):
-    """Print debug messages only if DEBUG is enabled"""
-    if DEBUG:
-        print("[DEBUG]", *args, **kwargs)
 
 class WordlistManager:
     """Manages wordlists for various security tools"""

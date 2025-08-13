@@ -5,6 +5,7 @@ from lib.Tools import Tools, CommandResult
 from typing import Tuple, List, Dict, Optional
 from .Model import Model
 from .Agents import AgentManager, AgentType, AgentTask
+from lib.logging_utils import debug_print
 import re
 
 class Chat:
