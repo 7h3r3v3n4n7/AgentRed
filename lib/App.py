@@ -9,15 +9,10 @@ import os
 import asyncio
 from lib.Exporter import export_alpaca_data
 from lib.config import Config
+from lib.logging_utils import debug_print
 
 # Load environment variables
-DEBUG = os.getenv('DEBUG', '0') == '1'
 COMMAND_TIMEOUT = int(os.getenv('COMMAND_TIMEOUT', '300'))  # 5 minutes default timeout
-
-def debug_print(*args, **kwargs):
-    """Print debug messages only if DEBUG is enabled"""
-    if DEBUG:
-        print("[DEBUG]", *args, **kwargs)
 
 class App:
     def __init__(self):

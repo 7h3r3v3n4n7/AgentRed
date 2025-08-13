@@ -11,14 +11,7 @@ from collections import defaultdict, Counter
 import networkx as nx
 import heapq
 from lib.config import Config
-
-# Load environment variables
-DEBUG = os.getenv('DEBUG', '0') == '1'
-
-def debug_print(*args, **kwargs):
-    """Print debug messages only if DEBUG is enabled"""
-    if DEBUG:
-        print("[DEBUG]", *args, **kwargs)
+from lib.logging_utils import debug_print
 
 # For embeddings and vector search
 try:

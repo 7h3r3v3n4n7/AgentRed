@@ -10,6 +10,7 @@ from .WordlistManager import WordlistManager
 from .TargetParser import TargetParser
 from .ToolRegistry import ToolRegistry
 from lib.config import Config
+from lib.logging_utils import debug_print
 
 # Import RAG functionality
 try:
@@ -17,14 +18,6 @@ try:
     RAG_AVAILABLE = True
 except ImportError:
     RAG_AVAILABLE = False
-
-# Load environment variables
-DEBUG = os.getenv('DEBUG', '0') == '1'
-
-def debug_print(*args, **kwargs):
-    """Print debug messages only if DEBUG is enabled"""
-    if DEBUG:
-        print("[DEBUG]", *args, **kwargs)
 
 class Tools:
     def __init__(self, config: Config, concurrency_limit: int = 5):
